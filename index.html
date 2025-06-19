@@ -50,6 +50,7 @@
             max-height: 250px;
             overflow-y: auto;
             display: flex;
+            flex-direction: column; /* For scene setting */
             align-items: center;
             justify-content: center;
             font-size: 1.125rem;
@@ -82,7 +83,7 @@
             cursor: not-allowed;
             box-shadow: none;
         }
-        .secondary-button { /* For Reset button */
+        .secondary-button { /* For Reset, Save, Load buttons */
              background-color: #e5e7eb;
              color: #4b5563;
              box-shadow: none;
@@ -111,8 +112,8 @@
         }
         #affection-fill {
             height: 100%;
-            background: linear-gradient(to right, #fca5a5, #f87171, #ef4444);
-            transition: width 0.5s ease-in-out;
+            background: linear-gradient(to right, #facc15, #f59e0b);
+            transition: width 0.5s ease-in-out, background 0.5s ease-in-out;
             border-radius: 4px;
         }
         #loading-indicator {
@@ -256,14 +257,21 @@
             <div id="affection-display">Affection: 0%</div>
             <div id="affection-meter"><div id="affection-fill"></div></div>
         </div>
-        <div id="button-controls" class="flex flex-col md:flex-row gap-3">
+        <div id="button-controls" class="grid grid-cols-2 gap-3">
              <button id="reset-button" class="action-button secondary-button">Reset Date</button>
-             <button id="new-game-button" class="action-button hidden">New Game</button>
+             <button id="new-game-button" class="action-button">New Game</button>
         </div>
         <div id="loading-indicator">
             <div id="loading-text">Thinking...</div>
         </div>
     </div>
+
+    <!-- Global Controls: Always visible -->
+    <div id="global-controls" class="fixed bottom-4 right-4 flex flex-col gap-2 z-20 w-36">
+        <button id="save-to-file-button" class="action-button secondary-button text-sm py-2">Save to File</button>
+        <button id="load-from-file-button" class="action-button secondary-button text-sm py-2">Load from File</button>
+    </div>
+    <input type="file" id="file-loader-input" class="hidden" accept=".json">
 
     <div id="message-box"></div>
 
@@ -297,6 +305,9 @@
         const affectionFill = document.getElementById('affection-fill');
         const resetButton = document.getElementById('reset-button');
         const newGameButton = document.getElementById('new-game-button');
+        const saveToFileButton = document.getElementById('save-to-file-button');
+        const loadFromFileButton = document.getElementById('load-from-file-button');
+        const fileLoaderInput = document.getElementById('file-loader-input');
         const loadingIndicator = document.getElementById('loading-indicator');
         const loadingText = document.getElementById('loading-text');
         const messageBox = document.getElementById('message-box');
@@ -305,8 +316,8 @@
 
 
         // --- Game State Management ---
-        function saveGameState() {
-            const gameState = {
+        function getGameState() {
+             return {
                 affection,
                 turnCount,
                 gameEnded,
@@ -314,42 +325,88 @@
                 playerCharacter,
                 currentLocation,
                 dialogueHistory,
-                lastDialogue: dialogueBox.textContent
+                lastDialogue: dialogueBox.innerHTML
             };
-            localStorage.setItem('datingSimSave', JSON.stringify(gameState));
         }
 
-        function loadGameState() {
+        function restoreGameState(gameState) {
+            affection = gameState.affection;
+            turnCount = gameState.turnCount;
+            gameEnded = gameState.gameEnded;
+            mainCharacter = gameState.mainCharacter;
+            playerCharacter = gameState.playerCharacter;
+            currentLocation = gameState.currentLocation;
+            dialogueHistory = gameState.dialogueHistory || [];
+
+            // Restore UI
+            characterCreationDiv.style.display = 'none';
+            gameContainer.style.display = 'flex';
+            characterNameElem.textContent = mainCharacter.name;
+            characterImage.src = mainCharacter.image;
+            dialogueBox.innerHTML = gameState.lastDialogue;
+            
+            rebuildHistoryUI();
+            updateAffectionMeter();
+
+            if (gameEnded) {
+                showEndScreen();
+            } else {
+                showGameScreen();
+            }
+            showMessage("Game loaded successfully!", "success");
+        }
+
+        function saveGameStateToLocal() {
+            if (playerCharacter.name) { // Only save if a game is active
+                localStorage.setItem('datingSimSave', JSON.stringify(getGameState()));
+            }
+        }
+
+        function loadGameStateFromLocal() {
             const savedState = localStorage.getItem('datingSimSave');
             if (savedState) {
-                const gameState = JSON.parse(savedState);
-                affection = gameState.affection;
-                turnCount = gameState.turnCount;
-                gameEnded = gameState.gameEnded;
-                mainCharacter = gameState.mainCharacter;
-                playerCharacter = gameState.playerCharacter;
-                currentLocation = gameState.currentLocation;
-                dialogueHistory = gameState.dialogueHistory;
-
-                // Restore UI
-                characterCreationDiv.style.display = 'none';
-                gameContainer.style.display = 'flex';
-                characterNameElem.textContent = mainCharacter.name;
-                characterImage.src = mainCharacter.image;
-                dialogueBox.textContent = gameState.lastDialogue;
-                
-                rebuildHistoryUI();
-                updateAffectionMeter();
-
-                if (gameEnded) {
-                    showEndScreen();
-                }
-
+                restoreGameState(JSON.parse(savedState));
             } else {
                 showCharacterCreation();
             }
         }
         
+        function saveGameToFile() {
+            if (!playerCharacter.name) {
+                showMessage("Start a game before saving!", "error");
+                return;
+            }
+            const gameState = getGameState();
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(gameState, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "dating-sim-save.json");
+            document.body.appendChild(downloadAnchorNode); // required for firefox
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+            showMessage("Save file generated!", "success");
+        }
+
+        function loadGameFromFile(event) {
+            const file = event.target.files[0];
+            if (!file) {
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const gameState = JSON.parse(e.target.result);
+                    restoreGameState(gameState);
+                } catch (error) {
+                    showMessage("Could not load save file. It may be corrupted.", "error");
+                    console.error("Error parsing save file:", error);
+                }
+            };
+            reader.readAsText(file);
+             // Reset the input value to allow loading the same file again
+            event.target.value = '';
+        }
+
         function clearSave() {
              localStorage.removeItem('datingSimSave');
         }
@@ -364,12 +421,22 @@
         }
 
         function updateAffectionMeter() {
-            const percentage = Math.max(0, Math.min(affection, 100));
-            affectionFill.style.width = percentage + '%';
-            affectionDisplay.textContent = `Affection: ${Math.round(percentage)}%`;
-            if (percentage <= 20) affectionFill.style.background = 'linear-gradient(to right, #fca5a5, #dc2626)';
-            else if (percentage < 60) affectionFill.style.background = 'linear-gradient(to right, #facc15, #f59e0b)';
-            else affectionFill.style.background = 'linear-gradient(to right, #a78bfa, #8b5cf6)';
+            // Display the actual affection value.
+            const displayAffection = Math.round(affection);
+            affectionDisplay.textContent = `Affection: ${displayAffection}%`;
+
+            // Bar width is based on the absolute value of affection, capped at 100.
+            const barWidthPercentage = Math.min(100, Math.abs(affection));
+            affectionFill.style.width = `${barWidthPercentage}%`;
+
+            // Change color based on affection level
+            if (affection < 0) {
+                affectionFill.style.background = 'linear-gradient(to right, #ef4444, #b91c1c)'; // Red for negative
+            } else if (affection < 60) {
+                affectionFill.style.background = 'linear-gradient(to right, #facc15, #f59e0b)'; // Yellow/orange for neutral/positive
+            } else {
+                affectionFill.style.background = 'linear-gradient(to right, #a78bfa, #8b5cf6)'; // Purple for high
+            }
         }
 
         function addMessageToHistory(senderName, message, isPlayer = false) {
@@ -389,7 +456,9 @@
         
         function rebuildHistoryUI() {
             conversationHistoryDiv.innerHTML = '';
-            dialogueHistory.forEach(entry => prependHistoryEntry(entry));
+            if (Array.isArray(dialogueHistory)) {
+                dialogueHistory.forEach(entry => prependHistoryEntry(entry));
+            }
         }
 
         function clearConversationHistory() {
@@ -408,13 +477,11 @@
         
         function showEndScreen() {
             inputArea.style.display = 'none';
-            newGameButton.classList.remove('hidden');
             resetButton.textContent = "Play Again With Same Characters";
         }
         
         function showGameScreen() {
             inputArea.style.display = 'flex';
-            newGameButton.classList.add('hidden');
             resetButton.textContent = "Reset Date";
         }
 
@@ -427,7 +494,6 @@
         }
         
         async function startGameSession() {
-            // If characters are not defined, get them from input
             if (!playerCharacter.name || !mainCharacter.name) {
                  const chosenPlayerName = playerNameInput.value.trim();
                  const chosenPlayerGender = playerGenderSelect.value;
@@ -450,16 +516,14 @@
             gameContainer.style.display = 'flex';
             showLoading("Creating a perfect first date scenario...");
             
-            // AI prompt to generate the starting scene
             const scenePrompt = `
                 You are a creative writer setting a scene for a dating sim.
                 The player is ${playerCharacter.name} (${playerCharacter.gender}).
-                Their date is ${mainCharacter.name} (${mainCharacter.gender}).
-                They are strangers meeting for the first time.
-                Generate a creative and interesting starting location for their date and a natural, engaging opening line for ${mainCharacter.name} to say.
+                Their date is ${mainCharacter.name} (${mainCharacter.gender}). They are strangers meeting for the first time.
+                Generate a creative starting location, a vivid one-sentence description of that location (the scene setting), and a natural, engaging opening line (the context) for ${mainCharacter.name} to say.
                 
-                Your response MUST be a JSON object with 'location' (string) and 'openingDialogue' (string) keys.
-                Example: { "location": "an old vinyl record store", "openingDialogue": "Wow, I didn't expect to see anyone else in the jazz section. Find any gems?" }
+                Your response MUST be a JSON object with 'location' (string), 'sceneDescription' (string), and 'openingDialogue' (string) keys.
+                Example: { "location": "an old vinyl record store", "sceneDescription": "Sunlight streams through the dusty windows, illuminating rows upon rows of colorful album covers.", "openingDialogue": "Wow, I didn't expect to see anyone else in the jazz section. Find any gems?" }
             `;
             
             let chatHistory = [{ role: "user", parts: [{ text: scenePrompt }] }];
@@ -469,12 +533,16 @@
                     responseMimeType: "application/json",
                     responseSchema: {
                         type: "OBJECT",
-                        properties: { "location": { "type": "STRING" }, "openingDialogue": { "type": "STRING" } },
-                        "required": ["location", "openingDialogue"]
+                        properties: { 
+                            "location": { "type": "STRING" }, 
+                            "sceneDescription": { "type": "STRING" },
+                            "openingDialogue": { "type": "STRING" }
+                        },
+                        "required": ["location", "sceneDescription", "openingDialogue"]
                     }
                 }
             };
-            const apiKey = ""; // Provided by Canvas at runtime
+            const apiKey = "";
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
             try {
@@ -490,21 +558,23 @@
                 const scene = JSON.parse(jsonString);
 
                 currentLocation = scene.location;
-                dialogueBox.textContent = scene.openingDialogue;
+                dialogueBox.innerHTML = `<p class="text-gray-500 italic mb-4 text-center">${scene.sceneDescription}</p><p class="text-center">"${scene.openingDialogue}"</p>`;
                 characterNameElem.textContent = mainCharacter.name;
                 characterImage.src = mainCharacter.image;
 
                 addMessageToHistory(mainCharacter.name, scene.openingDialogue, false);
                 updateAffectionMeter();
-                saveGameState();
+                saveGameStateToLocal();
 
             } catch (error) {
                 showMessage(`Failed to start the date: ${error.message}`);
                 console.error("Scene generation error:", error);
                 // Fallback to a default scene
                 currentLocation = "a cozy cafe";
-                dialogueBox.textContent = "This place has great coffee, don't you think?";
-                addMessageToHistory(mainCharacter.name, dialogueBox.textContent, false);
+                const sceneDescription = "The air is filled with the rich aroma of roasted coffee beans and quiet chatter.";
+                const openingDialogue = "This place has great coffee, don't you think?";
+                dialogueBox.innerHTML = `<p class="text-gray-500 italic mb-4 text-center">${sceneDescription}</p><p class="text-center">"${openingDialogue}"</p>`;
+                addMessageToHistory(mainCharacter.name, openingDialogue, false);
             } finally {
                 hideLoading();
                 playerInput.value = '';
@@ -532,7 +602,7 @@
             sendButton.disabled = true;
             showLoading("Thinking...");
 
-            const prompt = `You are ${mainCharacter.name}, a ${mainCharacter.gender} person on a date with ${playerCharacter.name} (${playerCharacter.gender}). You are at ${currentLocation}. Your current affection for them is ${affection}/100. The player just said: "${playerText}". Respond naturally in 1-3 sentences. Then, provide an affectionChange from -10 to 10. Your response MUST be a JSON object: { "dialogue": "...", "affectionChange": 5 }`;
+            const prompt = `You are ${mainCharacter.name}, a ${mainCharacter.gender} person on a date with ${playerCharacter.name} (${playerCharacter.gender}). You are at ${currentLocation}. Your current affection for them is ${affection} (on a scale of -30 to 100). Respond naturally in 1-3 sentences. Then, provide an affectionChange from -10 to 10. Your response MUST be a JSON object: { "dialogue": "...", "affectionChange": 5 }`;
 
             let chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
             const payload = {
@@ -562,11 +632,11 @@
 
                 dialogueBox.textContent = aiResponse.dialogue;
                 addMessageToHistory(mainCharacter.name, aiResponse.dialogue, false);
-                affection = Math.max(0, Math.min(100, affection + aiResponse.affectionChange));
+                affection = Math.max(-30, Math.min(100, affection + aiResponse.affectionChange));
                 updateAffectionMeter();
                 turnCount++;
                 checkGameEnd();
-                saveGameState();
+                saveGameStateToLocal();
 
             } catch (error) {
                 showMessage(`Error communicating with AI: ${error.message}`);
@@ -585,7 +655,7 @@
             if (affection >= 90 && turnCount > 3) {
                 endingMessage = `${mainCharacter.name} is clearly smitten! "I've had an amazing time, let's definitely do this again soon!" It seems you've found a great connection!`;
                 gameEnded = true;
-            } else if (affection <= 10 && turnCount > 3) {
+            } else if (affection <= -20 && turnCount > 3) {
                 endingMessage = `${mainCharacter.name} seems uncomfortable. "I think I need to get going now." The date ends abruptly. Perhaps this wasn't the right match.`;
                 gameEnded = true;
             } else if (turnCount >= maxTurns) {
@@ -606,14 +676,16 @@
         newGameButton.addEventListener('click', showCharacterCreation);
         resetButton.addEventListener('click', resetGame);
         startGameButton.addEventListener('click', () => {
-             // Reset characters before starting a new session from creation screen
              playerCharacter = {};
              mainCharacter = {};
              resetGame();
         });
+        saveToFileButton.addEventListener('click', saveGameToFile);
+        loadFromFileButton.addEventListener('click', () => fileLoaderInput.click());
+        fileLoaderInput.addEventListener('change', loadGameFromFile);
 
         // Initial Load
-        window.onload = loadGameState;
+        window.onload = loadGameStateFromLocal;
     </script>
 </body>
 </html>
