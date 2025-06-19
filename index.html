@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Dating Sim</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Custom CSS for overall styling and font */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5; /* Slightly different background */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .game-view {
+            background-color: #ffffff; /* White card background */
+            border-radius: 1.5rem; /* More rounded corners */
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1); /* Soft shadow */
+            max-width: 600px;
+            width: 100%;
+            padding: 2.5rem; /* More padding */
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem; /* Space between elements */
+            position: relative; /* For loading indicator */
+        }
+        #character-image {
+            width: 150px;
+            height: 150px;
+            object-fit: cover;
+            border-radius: 50%; /* Circular image */
+            border: 4px solid #a78bfa; /* Purple border */
+            margin: 0 auto 1rem; /* Center and space below */
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+        #dialogue-box {
+            background-color: #f3f4f6; /* Light gray for dialogue box */
+            border-radius: 1rem;
+            padding: 1.5rem;
+            min-height: 120px;
+            max-height: 250px;
+            overflow-y: auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.125rem;
+            color: #374151;
+            line-height: 1.6;
+            text-align: left;
+        }
+        .action-button {
+            background-color: #8b5cf6; /* Purple button */
+            color: white;
+            padding: 0.85rem 1.5rem;
+            border-radius: 0.75rem;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s ease, transform 0.1s ease;
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+            border: none;
+            width: 100%;
+        }
+        .action-button:hover:not(:disabled) {
+            background-color: #7c3aed;
+            transform: translateY(-2px);
+        }
+        .action-button:active:not(:disabled) {
+            transform: translateY(0);
+        }
+        .action-button:disabled {
+            background-color: #a78bfa;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        .secondary-button { /* For Reset button */
+             background-color: #e5e7eb;
+             color: #4b5563;
+             box-shadow: none;
+        }
+        .secondary-button:hover:not(:disabled) {
+            background-color: #d1d5db;
+        }
+        #game-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #4c1d95;
+            margin-bottom: 1rem;
+        }
+        #affection-display {
+            font-size: 1rem;
+            color: #4c1d95;
+            font-weight: 600;
+            text-align: left;
+        }
+        #affection-meter {
+            height: 8px;
+            background-color: #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+            width: 100%;
+        }
+        #affection-fill {
+            height: 100%;
+            background: linear-gradient(to right, #fca5a5, #f87171, #ef4444);
+            transition: width 0.5s ease-in-out;
+            border-radius: 4px;
+        }
+        #loading-indicator {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            border-radius: 1.5rem;
+            font-size: 1.2rem;
+            color: #4c1d95;
+            font-weight: 600;
+            z-index: 10;
+            transition: opacity 0.3s ease-in-out;
+            opacity: 0;
+            pointer-events: none;
+        }
+        #loading-indicator.visible {
+            opacity: 1;
+            pointer-events: all;
+        }
+        #message-box {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #ef4444;
+            color: white;
+            padding: 15px 25px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+            pointer-events: none;
+        }
+        #message-box.visible {
+            opacity: 1;
+        }
+        #character-creation {
+            display: none; /* Hidden by default */
+        }
+        #character-creation label {
+            font-size: 1.1rem;
+            color: #374151;
+            margin-bottom: 0.5rem;
+            display: block;
+            text-align: left;
+            width: 100%;
+        }
+        #character-creation input[type="text"],
+        #character-creation select {
+            width: 100%;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            border: 2px solid #d1d5db;
+            margin-bottom: 1rem;
+            font-size: 1rem;
+            color: #374151;
+            box-sizing: border-box;
+        }
+        #character-creation input[type="text"]:focus,
+        #character-creation select:focus {
+            outline: none;
+            border-color: #8b5cf6;
+        }
+        #conversation-history {
+            background-color: #f9fafb;
+            border-radius: 1rem;
+            padding: 1rem;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #e5e7eb;
+            text-align: left;
+            font-size: 0.9rem;
+            line-height: 1.4;
+            display: flex;
+            flex-direction: column-reverse;
+            flex-grow: 1;
+            gap: 0.5rem;
+        }
+        .history-entry {
+            padding: 0.25rem 0;
+        }
+        .history-entry span {
+            font-weight: 600;
+            color: #4c1d95;
+        }
+        .history-entry.player-message span {
+            color: #1d4ed8;
+        }
+    </style>
+</head>
+<body>
+    <div id="character-creation" class="game-view gap-4">
+        <h2 class="text-3xl font-bold text-purple-700 mb-4">Create Your Characters!</h2>
+        <div class="w-full">
+            <h3 class="text-xl font-semibold text-gray-700 mb-2">Your Character:</h3>
+            <label for="player-name-input">Your Name:</label>
+            <input type="text" id="player-name-input" placeholder="e.g., Chris, Sam, Taylor">
+        </div>
+        <div class="w-full">
+            <label for="player-gender-select">Your Gender:</label>
+            <select id="player-gender-select">
+                <option value="gender-neutral">Gender-Neutral</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+            </select>
+        </div>
+        <div class="w-full mt-6">
+            <h3 class="text-xl font-semibold text-gray-700 mb-2">Your Date:</h3>
+            <label for="char-name-input">Date's Name:</label>
+            <input type="text" id="char-name-input" placeholder="e.g., Alex, Jamie, Kai">
+        </div>
+        <div class="w-full">
+            <label for="char-gender-select">Date's Gender:</label>
+            <select id="char-gender-select">
+                <option value="gender-neutral">Gender-Neutral</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+            </select>
+        </div>
+        <button id="start-game-button" class="action-button mt-4">Start Date!</button>
+    </div>
+
+    <div id="game-container" class="game-view" style="display: none;">
+        <img id="character-image" src="https://placehold.co/150x150/a78bfa/ffffff?text=Alex" alt="Character Image">
+        <h2 id="character-name" class="text-2xl font-semibold text-gray-800"></h2>
+        <div id="dialogue-box" class="rounded-xl p-6 bg-gray-100 shadow-inner"></div>
+        <div id="conversation-history"></div>
+        <div id="input-area" class="flex flex-col md:flex-row gap-3">
+            <input type="text" id="player-input" class="flex-grow p-3 rounded-lg border-2 border-gray-300 focus:outline-none focus:border-purple-500 text-gray-700" placeholder="Type your response...">
+            <button id="send-button" class="action-button">Send</button>
+        </div>
+        <div class="flex items-center gap-4">
+            <div id="affection-display">Affection: 0%</div>
+            <div id="affection-meter"><div id="affection-fill"></div></div>
+        </div>
+        <div id="button-controls" class="flex flex-col md:flex-row gap-3">
+             <button id="reset-button" class="action-button secondary-button">Reset Date</button>
+             <button id="new-game-button" class="action-button hidden">New Game</button>
+        </div>
+        <div id="loading-indicator">
+            <div id="loading-text">Thinking...</div>
+        </div>
+    </div>
+
+    <div id="message-box"></div>
+
+    <script>
+        // Game State Variables
+        let affection = 0;
+        let turnCount = 0;
+        const maxTurns = 10;
+        let gameEnded = false;
+        let mainCharacter = {};
+        let playerCharacter = {};
+        let currentLocation = "";
+        let dialogueHistory = [];
+
+        // DOM Elements
+        const characterCreationDiv = document.getElementById('character-creation');
+        const playerNameInput = document.getElementById('player-name-input');
+        const playerGenderSelect = document.getElementById('player-gender-select');
+        const charNameInput = document.getElementById('char-name-input');
+        const charGenderSelect = document.getElementById('char-gender-select');
+        const startGameButton = document.getElementById('start-game-button');
+
+        const gameContainer = document.getElementById('game-container');
+        const characterImage = document.getElementById('character-image');
+        const characterNameElem = document.getElementById('character-name');
+        const dialogueBox = document.getElementById('dialogue-box');
+        const conversationHistoryDiv = document.getElementById('conversation-history');
+        const playerInput = document.getElementById('player-input');
+        const sendButton = document.getElementById('send-button');
+        const affectionDisplay = document.getElementById('affection-display');
+        const affectionFill = document.getElementById('affection-fill');
+        const resetButton = document.getElementById('reset-button');
+        const newGameButton = document.getElementById('new-game-button');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const loadingText = document.getElementById('loading-text');
+        const messageBox = document.getElementById('message-box');
+        const inputArea = document.getElementById('input-area');
+        const buttonControls = document.getElementById('button-controls');
+
+
+        // --- Game State Management ---
+        function saveGameState() {
+            const gameState = {
+                affection,
+                turnCount,
+                gameEnded,
+                mainCharacter,
+                playerCharacter,
+                currentLocation,
+                dialogueHistory,
+                lastDialogue: dialogueBox.textContent
+            };
+            localStorage.setItem('datingSimSave', JSON.stringify(gameState));
+        }
+
+        function loadGameState() {
+            const savedState = localStorage.getItem('datingSimSave');
+            if (savedState) {
+                const gameState = JSON.parse(savedState);
+                affection = gameState.affection;
+                turnCount = gameState.turnCount;
+                gameEnded = gameState.gameEnded;
+                mainCharacter = gameState.mainCharacter;
+                playerCharacter = gameState.playerCharacter;
+                currentLocation = gameState.currentLocation;
+                dialogueHistory = gameState.dialogueHistory;
+
+                // Restore UI
+                characterCreationDiv.style.display = 'none';
+                gameContainer.style.display = 'flex';
+                characterNameElem.textContent = mainCharacter.name;
+                characterImage.src = mainCharacter.image;
+                dialogueBox.textContent = gameState.lastDialogue;
+                
+                rebuildHistoryUI();
+                updateAffectionMeter();
+
+                if (gameEnded) {
+                    showEndScreen();
+                }
+
+            } else {
+                showCharacterCreation();
+            }
+        }
+        
+        function clearSave() {
+             localStorage.removeItem('datingSimSave');
+        }
+
+
+        // --- UI Functions ---
+        function showMessage(message, type = 'error') {
+            messageBox.textContent = message;
+            messageBox.style.backgroundColor = type === 'error' ? '#ef4444' : '#4CAF50';
+            messageBox.classList.add('visible');
+            setTimeout(() => messageBox.classList.remove('visible'), 3000);
+        }
+
+        function updateAffectionMeter() {
+            const percentage = Math.max(0, Math.min(affection, 100));
+            affectionFill.style.width = percentage + '%';
+            affectionDisplay.textContent = `Affection: ${Math.round(percentage)}%`;
+            if (percentage <= 20) affectionFill.style.background = 'linear-gradient(to right, #fca5a5, #dc2626)';
+            else if (percentage < 60) affectionFill.style.background = 'linear-gradient(to right, #facc15, #f59e0b)';
+            else affectionFill.style.background = 'linear-gradient(to right, #a78bfa, #8b5cf6)';
+        }
+
+        function addMessageToHistory(senderName, message, isPlayer = false) {
+            dialogueHistory.push({ sender: senderName, message, isPlayer });
+            prependHistoryEntry({ sender: senderName, message, isPlayer });
+        }
+        
+        function prependHistoryEntry(entry) {
+            const entryDiv = document.createElement('div');
+            entryDiv.classList.add('history-entry');
+            if (entry.isPlayer) {
+                entryDiv.classList.add('player-message');
+            }
+            entryDiv.innerHTML = `<span>${entry.sender}:</span> ${entry.message}`;
+            conversationHistoryDiv.prepend(entryDiv);
+        }
+        
+        function rebuildHistoryUI() {
+            conversationHistoryDiv.innerHTML = '';
+            dialogueHistory.forEach(entry => prependHistoryEntry(entry));
+        }
+
+        function clearConversationHistory() {
+            conversationHistoryDiv.innerHTML = '';
+            dialogueHistory = [];
+        }
+
+        function showLoading(text) {
+            loadingText.textContent = text;
+            loadingIndicator.classList.add('visible');
+        }
+
+        function hideLoading() {
+            loadingIndicator.classList.remove('visible');
+        }
+        
+        function showEndScreen() {
+            inputArea.style.display = 'none';
+            newGameButton.classList.remove('hidden');
+            resetButton.textContent = "Play Again With Same Characters";
+        }
+        
+        function showGameScreen() {
+            inputArea.style.display = 'flex';
+            newGameButton.classList.add('hidden');
+            resetButton.textContent = "Reset Date";
+        }
+
+        // --- Core Game Logic ---
+        
+        function showCharacterCreation() {
+            clearSave();
+            gameContainer.style.display = 'none';
+            characterCreationDiv.style.display = 'flex';
+        }
+        
+        async function startGameSession() {
+            // If characters are not defined, get them from input
+            if (!playerCharacter.name || !mainCharacter.name) {
+                 const chosenPlayerName = playerNameInput.value.trim();
+                 const chosenPlayerGender = playerGenderSelect.value;
+                 const chosenCharName = charNameInput.value.trim();
+                 const chosenCharGender = charGenderSelect.value;
+
+                if (!chosenPlayerName || !chosenCharName) {
+                    showMessage("Please enter names for both characters.");
+                    return;
+                }
+                playerCharacter = { name: chosenPlayerName, gender: chosenPlayerGender };
+                mainCharacter = {
+                    name: chosenCharName,
+                    gender: chosenCharGender,
+                    image: `https://placehold.co/150x150/a78bfa/ffffff?text=${encodeURIComponent(chosenCharName.split(' ')[0])}`
+                };
+            }
+            
+            characterCreationDiv.style.display = 'none';
+            gameContainer.style.display = 'flex';
+            showLoading("Creating a perfect first date scenario...");
+            
+            // AI prompt to generate the starting scene
+            const scenePrompt = `
+                You are a creative writer setting a scene for a dating sim.
+                The player is ${playerCharacter.name} (${playerCharacter.gender}).
+                Their date is ${mainCharacter.name} (${mainCharacter.gender}).
+                They are strangers meeting for the first time.
+                Generate a creative and interesting starting location for their date and a natural, engaging opening line for ${mainCharacter.name} to say.
+                
+                Your response MUST be a JSON object with 'location' (string) and 'openingDialogue' (string) keys.
+                Example: { "location": "an old vinyl record store", "openingDialogue": "Wow, I didn't expect to see anyone else in the jazz section. Find any gems?" }
+            `;
+            
+            let chatHistory = [{ role: "user", parts: [{ text: scenePrompt }] }];
+            const payload = {
+                contents: chatHistory,
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: { "location": { "type": "STRING" }, "openingDialogue": { "type": "STRING" } },
+                        "required": ["location", "openingDialogue"]
+                    }
+                }
+            };
+            const apiKey = ""; // Provided by Canvas at runtime
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) throw new Error(`API error: ${response.status}`);
+                const result = await response.json();
+                
+                const jsonString = result.candidates[0].content.parts[0].text;
+                const scene = JSON.parse(jsonString);
+
+                currentLocation = scene.location;
+                dialogueBox.textContent = scene.openingDialogue;
+                characterNameElem.textContent = mainCharacter.name;
+                characterImage.src = mainCharacter.image;
+
+                addMessageToHistory(mainCharacter.name, scene.openingDialogue, false);
+                updateAffectionMeter();
+                saveGameState();
+
+            } catch (error) {
+                showMessage(`Failed to start the date: ${error.message}`);
+                console.error("Scene generation error:", error);
+                // Fallback to a default scene
+                currentLocation = "a cozy cafe";
+                dialogueBox.textContent = "This place has great coffee, don't you think?";
+                addMessageToHistory(mainCharacter.name, dialogueBox.textContent, false);
+            } finally {
+                hideLoading();
+                playerInput.value = '';
+                playerInput.focus();
+            }
+        }
+        
+        function resetGame() {
+            affection = 0;
+            turnCount = 0;
+            gameEnded = false;
+            currentLocation = "";
+            clearConversationHistory();
+            showGameScreen();
+            startGameSession(); // Start new date with same characters
+        }
+
+        async function handlePlayerInput() {
+            if (gameEnded) return;
+            const playerText = playerInput.value.trim();
+            if (!playerText) return showMessage("Please type something to respond.");
+
+            addMessageToHistory(playerCharacter.name, playerText, true);
+            playerInput.disabled = true;
+            sendButton.disabled = true;
+            showLoading("Thinking...");
+
+            const prompt = `You are ${mainCharacter.name}, a ${mainCharacter.gender} person on a date with ${playerCharacter.name} (${playerCharacter.gender}). You are at ${currentLocation}. Your current affection for them is ${affection}/100. The player just said: "${playerText}". Respond naturally in 1-3 sentences. Then, provide an affectionChange from -10 to 10. Your response MUST be a JSON object: { "dialogue": "...", "affectionChange": 5 }`;
+
+            let chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
+            const payload = {
+                contents: chatHistory,
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: { "dialogue": { "type": "STRING" }, "affectionChange": { "type": "INTEGER" } },
+                        "required": ["dialogue", "affectionChange"]
+                    }
+                }
+            };
+            const apiKey = "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) throw new Error(`API error: ${response.status}`);
+                const result = await response.json();
+                const jsonString = result.candidates[0].content.parts[0].text;
+                const aiResponse = JSON.parse(jsonString);
+
+                dialogueBox.textContent = aiResponse.dialogue;
+                addMessageToHistory(mainCharacter.name, aiResponse.dialogue, false);
+                affection = Math.max(0, Math.min(100, affection + aiResponse.affectionChange));
+                updateAffectionMeter();
+                turnCount++;
+                checkGameEnd();
+                saveGameState();
+
+            } catch (error) {
+                showMessage(`Error communicating with AI: ${error.message}`);
+                console.error("Fetch error:", error);
+            } finally {
+                playerInput.disabled = false;
+                sendButton.disabled = false;
+                hideLoading();
+                playerInput.value = '';
+                if (!gameEnded) playerInput.focus();
+            }
+        }
+        
+        function checkGameEnd() {
+            let endingMessage = '';
+            if (affection >= 90 && turnCount > 3) {
+                endingMessage = `${mainCharacter.name} is clearly smitten! "I've had an amazing time, let's definitely do this again soon!" It seems you've found a great connection!`;
+                gameEnded = true;
+            } else if (affection <= 10 && turnCount > 3) {
+                endingMessage = `${mainCharacter.name} seems uncomfortable. "I think I need to get going now." The date ends abruptly. Perhaps this wasn't the right match.`;
+                gameEnded = true;
+            } else if (turnCount >= maxTurns) {
+                endingMessage = `The conversation comes to a natural close. ${mainCharacter.name} smiles, "It was nice chatting with you!" A friendly goodbye.`;
+                gameEnded = true;
+            }
+
+            if (gameEnded) {
+                dialogueBox.textContent = endingMessage;
+                showEndScreen();
+            }
+        }
+
+
+        // Event Listeners
+        sendButton.addEventListener('click', handlePlayerInput);
+        playerInput.addEventListener('keypress', (e) => e.key === 'Enter' && handlePlayerInput());
+        newGameButton.addEventListener('click', showCharacterCreation);
+        resetButton.addEventListener('click', resetGame);
+        startGameButton.addEventListener('click', () => {
+             // Reset characters before starting a new session from creation screen
+             playerCharacter = {};
+             mainCharacter = {};
+             resetGame();
+        });
+
+        // Initial Load
+        window.onload = loadGameState;
+    </script>
+</body>
+</html>
