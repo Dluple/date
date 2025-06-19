@@ -219,9 +219,11 @@
         <!-- API Key Section -->
         <div class="w-full mt-2 p-4 border-2 border-dashed border-purple-300 rounded-lg">
              <h3 class="text-xl font-semibold text-gray-700 mb-2">API Key Setup</h3>
-             <label for="api-key-input">
-                To play outside the original environment (e.g., on GitHub), you need a Google AI API key.
-                <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-purple-600 hover:underline">Get your key here.</a>
+             <label for="api-key-input" class="text-sm">
+                To play on GitHub, you need a Google AI API key.
+                <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-purple-600 hover:underline">Get one here.</a>
+                <br>
+                <strong class="text-red-600">Important:</strong> In your key settings, ensure "Website restrictions" are removed or your GitHub URL (e.g., https://your-username.github.io/*) is added.
              </label>
             <input type="password" id="api-key-input" placeholder="Enter your Google AI API Key">
             <button id="save-api-key-button" class="action-button secondary-button w-auto px-4 py-2 text-sm self-center">Save Key</button>
@@ -289,11 +291,10 @@
 
     <script>
         // --- IMPORTANT NOTE FOR GITHUB/LOCAL USE ---
-        // This game uses the Google AI Gemini API. To run this HTML file outside of the
-        // original development environment, you must provide your own API key.
-        // Get a key from Google AI Studio: https://aistudio.google.com/app/apikey
-        // Paste the key into the input field on the character creation screen.
-        // The key is saved in your browser's local storage for convenience.
+        // This game uses the Google AI Gemini API. To run this HTML file, you must provide 
+        // your own API key. Get a key from Google AI Studio: https://aistudio.google.com/app/apikey
+        // For use on GitHub Pages, ensure your key has no "Website restrictions", or that you
+        // add your GitHub Pages URL (e.g., https://your-username.github.io/*) as an allowed site.
 
         // Game State Variables
         let affection = 0;
@@ -378,14 +379,14 @@
         }
 
         function saveGameStateToLocal() {
-            if (playerCharacter.name) {
+            if (playerCharacter && playerCharacter.name) {
                 localStorage.setItem('datingSimSave', JSON.stringify(getGameState()));
             }
         }
 
         function loadGameStateFromLocal() {
             const savedState = localStorage.getItem('datingSimSave');
-            if (savedState) {
+            if (userApiKey && savedState) {
                 restoreGameState(JSON.parse(savedState));
             } else {
                 showCharacterCreation();
@@ -393,7 +394,7 @@
         }
         
         function saveGameToFile() {
-            if (!playerCharacter.name) {
+            if (!playerCharacter || !playerCharacter.name) {
                 showMessage("Start a game before saving!", "error");
                 return;
             }
@@ -415,6 +416,10 @@
             reader.onload = function(e) {
                 try {
                     const gameState = JSON.parse(e.target.result);
+                    if(!userApiKey) {
+                        showMessage("Please set your API key before loading a save.", "error");
+                        return;
+                    }
                     restoreGameState(gameState);
                 } catch (error) {
                     showMessage("Could not load save file. It may be corrupted.", "error");
@@ -510,8 +515,7 @@
 
         async function callGeminiAPI(prompt, schema) {
             if (!userApiKey) {
-                showMessage("API Key is not set. Please set it on the start screen.", "error");
-                throw new Error("API Key is missing.");
+                throw new Error("API Key is not set. Please set it on the start screen.");
             }
 
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${userApiKey}`;
@@ -534,6 +538,9 @@
             if (!response.ok) {
                  const errorBody = await response.text();
                  console.error("API Error Response:", errorBody);
+                 if(response.status === 403) {
+                     throw new Error(`API error 403: Forbidden. Your API key may have website restrictions. Check console for details.`);
+                 }
                  throw new Error(`API error: ${response.status}. Check console for details.`);
             }
                 
@@ -548,7 +555,7 @@
         }
         
         async function startGameSession() {
-            if (!playerCharacter.name || !mainCharacter.name) {
+            if (!playerCharacter || !playerCharacter.name) {
                  const chosenPlayerName = playerNameInput.value.trim();
                  const chosenPlayerGender = playerGenderSelect.value;
                  const chosenCharName = charNameInput.value.trim();
@@ -593,10 +600,12 @@
             } catch (error) {
                 showMessage(`Failed to start the date: ${error.message}`, "error");
                 console.error("Scene generation error:", error);
+                // If starting fails, go back to character creation
+                showCharacterCreation();
             } finally {
                 hideLoading();
                 playerInput.value = '';
-                playerInput.focus();
+                if(gameContainer.style.display === 'flex') playerInput.focus();
             }
         }
         
@@ -710,8 +719,14 @@
 
         // Initial Load
         window.onload = () => {
-             checkApiKey();
-             loadGameStateFromLocal();
+             try {
+                checkApiKey();
+                loadGameStateFromLocal();
+             } catch (e) {
+                console.error("Error on initial load:", e);
+                showMessage("An error occurred on load. Starting fresh.", "error");
+                showCharacterCreation();
+             }
         };
     </script>
 </body>
