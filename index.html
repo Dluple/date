@@ -79,7 +79,7 @@
             transform: translateY(0);
         }
         .action-button:disabled {
-            background-color: #a78bfa;
+            background-color: #d8b4fe;
             cursor: not-allowed;
             box-shadow: none;
         }
@@ -169,7 +169,7 @@
             text-align: left;
             width: 100%;
         }
-        #character-creation input[type="text"],
+        #character-creation input,
         #character-creation select {
             width: 100%;
             padding: 0.75rem;
@@ -180,7 +180,7 @@
             color: #374151;
             box-sizing: border-box;
         }
-        #character-creation input[type="text"]:focus,
+        #character-creation input:focus,
         #character-creation select:focus {
             outline: none;
             border-color: #8b5cf6;
@@ -215,6 +215,18 @@
 <body>
     <div id="character-creation" class="game-view gap-4">
         <h2 class="text-3xl font-bold text-purple-700 mb-4">Create Your Characters!</h2>
+        
+        <!-- API Key Section -->
+        <div class="w-full mt-2 p-4 border-2 border-dashed border-purple-300 rounded-lg">
+             <h3 class="text-xl font-semibold text-gray-700 mb-2">API Key Setup</h3>
+             <label for="api-key-input">
+                To play outside the original environment (e.g., on GitHub), you need a Google AI API key.
+                <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-purple-600 hover:underline">Get your key here.</a>
+             </label>
+            <input type="password" id="api-key-input" placeholder="Enter your Google AI API Key">
+            <button id="save-api-key-button" class="action-button secondary-button w-auto px-4 py-2 text-sm self-center">Save Key</button>
+        </div>
+
         <div class="w-full">
             <h3 class="text-xl font-semibold text-gray-700 mb-2">Your Character:</h3>
             <label for="player-name-input">Your Name:</label>
@@ -276,6 +288,13 @@
     <div id="message-box"></div>
 
     <script>
+        // --- IMPORTANT NOTE FOR GITHUB/LOCAL USE ---
+        // This game uses the Google AI Gemini API. To run this HTML file outside of the
+        // original development environment, you must provide your own API key.
+        // Get a key from Google AI Studio: https://aistudio.google.com/app/apikey
+        // Paste the key into the input field on the character creation screen.
+        // The key is saved in your browser's local storage for convenience.
+
         // Game State Variables
         let affection = 0;
         let turnCount = 0;
@@ -285,6 +304,7 @@
         let playerCharacter = {};
         let currentLocation = "";
         let dialogueHistory = [];
+        let userApiKey = "";
 
         // DOM Elements
         const characterCreationDiv = document.getElementById('character-creation');
@@ -293,6 +313,8 @@
         const charNameInput = document.getElementById('char-name-input');
         const charGenderSelect = document.getElementById('char-gender-select');
         const startGameButton = document.getElementById('start-game-button');
+        const apiKeyInput = document.getElementById('api-key-input');
+        const saveApiKeyButton = document.getElementById('save-api-key-button');
 
         const gameContainer = document.getElementById('game-container');
         const characterImage = document.getElementById('character-image');
@@ -338,7 +360,6 @@
             currentLocation = gameState.currentLocation;
             dialogueHistory = gameState.dialogueHistory || [];
 
-            // Restore UI
             characterCreationDiv.style.display = 'none';
             gameContainer.style.display = 'flex';
             characterNameElem.textContent = mainCharacter.name;
@@ -357,7 +378,7 @@
         }
 
         function saveGameStateToLocal() {
-            if (playerCharacter.name) { // Only save if a game is active
+            if (playerCharacter.name) {
                 localStorage.setItem('datingSimSave', JSON.stringify(getGameState()));
             }
         }
@@ -381,7 +402,7 @@
             const downloadAnchorNode = document.createElement('a');
             downloadAnchorNode.setAttribute("href", dataStr);
             downloadAnchorNode.setAttribute("download", "dating-sim-save.json");
-            document.body.appendChild(downloadAnchorNode); // required for firefox
+            document.body.appendChild(downloadAnchorNode);
             downloadAnchorNode.click();
             downloadAnchorNode.remove();
             showMessage("Save file generated!", "success");
@@ -389,9 +410,7 @@
 
         function loadGameFromFile(event) {
             const file = event.target.files[0];
-            if (!file) {
-                return;
-            }
+            if (!file) return;
             const reader = new FileReader();
             reader.onload = function(e) {
                 try {
@@ -403,7 +422,6 @@
                 }
             };
             reader.readAsText(file);
-             // Reset the input value to allow loading the same file again
             event.target.value = '';
         }
 
@@ -421,21 +439,17 @@
         }
 
         function updateAffectionMeter() {
-            // Display the actual affection value.
             const displayAffection = Math.round(affection);
             affectionDisplay.textContent = `Affection: ${displayAffection}%`;
-
-            // Bar width is based on the absolute value of affection, capped at 100.
             const barWidthPercentage = Math.min(100, Math.abs(affection));
             affectionFill.style.width = `${barWidthPercentage}%`;
 
-            // Change color based on affection level
             if (affection < 0) {
-                affectionFill.style.background = 'linear-gradient(to right, #ef4444, #b91c1c)'; // Red for negative
+                affectionFill.style.background = 'linear-gradient(to right, #ef4444, #b91c1c)';
             } else if (affection < 60) {
-                affectionFill.style.background = 'linear-gradient(to right, #facc15, #f59e0b)'; // Yellow/orange for neutral/positive
+                affectionFill.style.background = 'linear-gradient(to right, #facc15, #f59e0b)';
             } else {
-                affectionFill.style.background = 'linear-gradient(to right, #a78bfa, #8b5cf6)'; // Purple for high
+                affectionFill.style.background = 'linear-gradient(to right, #a78bfa, #8b5cf6)';
             }
         }
 
@@ -491,6 +505,46 @@
             clearSave();
             gameContainer.style.display = 'none';
             characterCreationDiv.style.display = 'flex';
+            checkApiKey();
+        }
+
+        async function callGeminiAPI(prompt, schema) {
+            if (!userApiKey) {
+                showMessage("API Key is not set. Please set it on the start screen.", "error");
+                throw new Error("API Key is missing.");
+            }
+
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${userApiKey}`;
+            
+            let chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
+            const payload = {
+                contents: chatHistory,
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: schema
+                }
+            };
+            
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                 const errorBody = await response.text();
+                 console.error("API Error Response:", errorBody);
+                 throw new Error(`API error: ${response.status}. Check console for details.`);
+            }
+                
+            const result = await response.json();
+
+            if (!result.candidates || result.candidates.length === 0) {
+                 console.error("API did not return candidates:", result);
+                 throw new Error("AI response was empty or invalid.");
+            }
+
+            return JSON.parse(result.candidates[0].content.parts[0].text);
         }
         
         async function startGameSession() {
@@ -516,65 +570,29 @@
             gameContainer.style.display = 'flex';
             showLoading("Creating a perfect first date scenario...");
             
-            const scenePrompt = `
-                You are a creative writer setting a scene for a dating sim.
-                The player is ${playerCharacter.name} (${playerCharacter.gender}).
-                Their date is ${mainCharacter.name} (${mainCharacter.gender}). They are strangers meeting for the first time.
-                Generate a creative starting location, a vivid one-sentence description of that location (the scene setting), and a natural, engaging opening line (the context) for ${mainCharacter.name} to say.
-                
-                Your response MUST be a JSON object with 'location' (string), 'sceneDescription' (string), and 'openingDialogue' (string) keys.
-                Example: { "location": "an old vinyl record store", "sceneDescription": "Sunlight streams through the dusty windows, illuminating rows upon rows of colorful album covers.", "openingDialogue": "Wow, I didn't expect to see anyone else in the jazz section. Find any gems?" }
-            `;
-            
-            let chatHistory = [{ role: "user", parts: [{ text: scenePrompt }] }];
-            const payload = {
-                contents: chatHistory,
-                generationConfig: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: "OBJECT",
-                        properties: { 
-                            "location": { "type": "STRING" }, 
-                            "sceneDescription": { "type": "STRING" },
-                            "openingDialogue": { "type": "STRING" }
-                        },
-                        "required": ["location", "sceneDescription", "openingDialogue"]
-                    }
-                }
+            const scenePrompt = `You are a creative writer setting a scene for a dating sim. The player is ${playerCharacter.name} (${playerCharacter.gender}). Their date is ${mainCharacter.name} (${mainCharacter.gender}). They are strangers meeting for the first time. Generate a creative starting location, a vivid one-sentence description of that location (the scene setting), and a natural, engaging opening line (the context) for ${mainCharacter.name} to say. Your response MUST be a JSON object with 'location', 'sceneDescription', and 'openingDialogue' keys.`;
+            const sceneSchema = {
+                type: "OBJECT",
+                properties: { 
+                    "location": { "type": "STRING" }, 
+                    "sceneDescription": { "type": "STRING" },
+                    "openingDialogue": { "type": "STRING" }
+                },
+                "required": ["location", "sceneDescription", "openingDialogue"]
             };
-            const apiKey = "";
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
             try {
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                if (!response.ok) throw new Error(`API error: ${response.status}`);
-                const result = await response.json();
-                
-                const jsonString = result.candidates[0].content.parts[0].text;
-                const scene = JSON.parse(jsonString);
-
+                const scene = await callGeminiAPI(scenePrompt, sceneSchema);
                 currentLocation = scene.location;
                 dialogueBox.innerHTML = `<p class="text-gray-500 italic mb-4 text-center">${scene.sceneDescription}</p><p class="text-center">"${scene.openingDialogue}"</p>`;
                 characterNameElem.textContent = mainCharacter.name;
                 characterImage.src = mainCharacter.image;
-
                 addMessageToHistory(mainCharacter.name, scene.openingDialogue, false);
                 updateAffectionMeter();
                 saveGameStateToLocal();
-
             } catch (error) {
-                showMessage(`Failed to start the date: ${error.message}`);
+                showMessage(`Failed to start the date: ${error.message}`, "error");
                 console.error("Scene generation error:", error);
-                // Fallback to a default scene
-                currentLocation = "a cozy cafe";
-                const sceneDescription = "The air is filled with the rich aroma of roasted coffee beans and quiet chatter.";
-                const openingDialogue = "This place has great coffee, don't you think?";
-                dialogueBox.innerHTML = `<p class="text-gray-500 italic mb-4 text-center">${sceneDescription}</p><p class="text-center">"${openingDialogue}"</p>`;
-                addMessageToHistory(mainCharacter.name, openingDialogue, false);
             } finally {
                 hideLoading();
                 playerInput.value = '';
@@ -589,7 +607,7 @@
             currentLocation = "";
             clearConversationHistory();
             showGameScreen();
-            startGameSession(); // Start new date with same characters
+            startGameSession();
         }
 
         async function handlePlayerInput() {
@@ -603,33 +621,14 @@
             showLoading("Thinking...");
 
             const prompt = `You are ${mainCharacter.name}, a ${mainCharacter.gender} person on a date with ${playerCharacter.name} (${playerCharacter.gender}). You are at ${currentLocation}. Your current affection for them is ${affection} (on a scale of -30 to 100). Respond naturally in 1-3 sentences. Then, provide an affectionChange from -10 to 10. Your response MUST be a JSON object: { "dialogue": "...", "affectionChange": 5 }`;
-
-            let chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
-            const payload = {
-                contents: chatHistory,
-                generationConfig: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: "OBJECT",
-                        properties: { "dialogue": { "type": "STRING" }, "affectionChange": { "type": "INTEGER" } },
-                        "required": ["dialogue", "affectionChange"]
-                    }
-                }
+            const responseSchema = {
+                type: "OBJECT",
+                properties: { "dialogue": { "type": "STRING" }, "affectionChange": { "type": "INTEGER" } },
+                "required": ["dialogue", "affectionChange"]
             };
-            const apiKey = "";
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
             try {
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                if (!response.ok) throw new Error(`API error: ${response.status}`);
-                const result = await response.json();
-                const jsonString = result.candidates[0].content.parts[0].text;
-                const aiResponse = JSON.parse(jsonString);
-
+                const aiResponse = await callGeminiAPI(prompt, responseSchema);
                 dialogueBox.textContent = aiResponse.dialogue;
                 addMessageToHistory(mainCharacter.name, aiResponse.dialogue, false);
                 affection = Math.max(-30, Math.min(100, affection + aiResponse.affectionChange));
@@ -637,16 +636,17 @@
                 turnCount++;
                 checkGameEnd();
                 saveGameStateToLocal();
-
             } catch (error) {
-                showMessage(`Error communicating with AI: ${error.message}`);
+                showMessage(`Error communicating with AI: ${error.message}`, "error");
                 console.error("Fetch error:", error);
             } finally {
-                playerInput.disabled = false;
-                sendButton.disabled = false;
+                if (!gameEnded) {
+                     playerInput.disabled = false;
+                     sendButton.disabled = false;
+                     playerInput.focus();
+                }
                 hideLoading();
                 playerInput.value = '';
-                if (!gameEnded) playerInput.focus();
             }
         }
         
@@ -669,23 +669,50 @@
             }
         }
 
+        function checkApiKey() {
+             userApiKey = localStorage.getItem('geminiApiKey') || "";
+             apiKeyInput.value = userApiKey;
+             if(userApiKey) {
+                startGameButton.disabled = false;
+                startGameButton.textContent = "Start Date!";
+             } else {
+                startGameButton.disabled = true;
+                startGameButton.textContent = "Enter API Key to Start";
+             }
+        }
 
         // Event Listeners
         sendButton.addEventListener('click', handlePlayerInput);
         playerInput.addEventListener('keypress', (e) => e.key === 'Enter' && handlePlayerInput());
         newGameButton.addEventListener('click', showCharacterCreation);
         resetButton.addEventListener('click', resetGame);
+        
         startGameButton.addEventListener('click', () => {
              playerCharacter = {};
              mainCharacter = {};
              resetGame();
         });
+
+        saveApiKeyButton.addEventListener('click', () => {
+            const key = apiKeyInput.value.trim();
+            if(key) {
+                localStorage.setItem('geminiApiKey', key);
+                showMessage("API Key saved!", "success");
+                checkApiKey();
+            } else {
+                showMessage("Please enter an API Key.", "error");
+            }
+        });
+
         saveToFileButton.addEventListener('click', saveGameToFile);
         loadFromFileButton.addEventListener('click', () => fileLoaderInput.click());
         fileLoaderInput.addEventListener('change', loadGameFromFile);
 
         // Initial Load
-        window.onload = loadGameStateFromLocal;
+        window.onload = () => {
+             checkApiKey();
+             loadGameStateFromLocal();
+        };
     </script>
 </body>
 </html>
